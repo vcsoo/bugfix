@@ -20,6 +20,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { execSync, spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 const argv = process.argv.slice(2);
 const has = (f) => argv.includes(f);
@@ -51,7 +52,14 @@ catch (e) { console.error('설정 파일을 읽지 못했습니다: ' + CFG_PATH
 
 const AREAS = Array.isArray(CFG.areas) ? CFG.areas : [];
 const ARTIFACTS = Array.isArray(CFG.artifacts) ? CFG.artifacts : [];
-const AXES = CFG.axes || [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+/* axes 를 비우면 카탈로그(references/axes.md)의 전 축 — «기본은 전 축을 도는 것» 이다.
+   번호를 여기에 적어 두면 카탈로그가 늘 때 뒤처진다(1~12 에 머물러 13번부터는 안 훑어도 조용했다). */
+function catalogAxes() {
+  const p = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'references', 'axes.md');
+  if (!fs.existsSync(p)) return [];
+  return [...new Set([...fs.readFileSync(p, 'utf8').matchAll(/^## (\d+)\./gm)].map((m) => Number(m[1])))];
+}
+const AXES = CFG.axes || catalogAxes();
 const LEDGER = CFG.ledger || 'docs/audit/LEDGER.md';
 
 let bad = 0, warn = 0;
@@ -181,6 +189,7 @@ function checkLedger() {
   }
 
   /* 안 훑은 칸 — «한 번에 최대한 많이» 를 지키는 장치 */
+  if (!AXES.length) { no('축 카탈로그(references/axes.md)를 읽지 못해 안 훑은 칸을 셀 수 없습니다 — audit.json 에 axes 를 적으세요'); return; }
   const missing = [];
   for (const a of AREAS) for (const ax of AXES) if (!seen.has(a.id + '|' + String(ax))) missing.push(a.id + '×' + ax);
   const total = AREAS.length * AXES.length;
