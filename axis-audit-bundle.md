@@ -13,6 +13,7 @@ node bundle.mjs --unpack axis-audit-bundle.md --into axis-audit
 
 | 파일 | |
 |---|---|
+| `.gitattributes` | |
 | `cases/2026-09-17-groupware-leave-double-count.md` | |
 | `cases/README.md` | |
 | `CONTRIBUTING.md` | |
@@ -31,6 +32,11 @@ node bundle.mjs --unpack axis-audit-bundle.md --into axis-audit
 | `templates/LEDGER.md` | |
 
 ---
+
+<!-- file: .gitattributes -->
+````````
+* text=auto eol=lf
+````````
 
 <!-- file: cases/2026-09-17-groupware-leave-double-count.md -->
 ````````markdown
