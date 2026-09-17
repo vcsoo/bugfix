@@ -90,6 +90,23 @@ for (const f of cases) {
   miss.length ? no('cases/' + f + ' — 빠진 것: ' + miss.join(', ')) : ok('cases/' + f);
 }
 
+console.log('\n[6] 문서에 적힌 축 개수 — 카탈로그와 맞는가');
+/* 축은 늘어난다. 카탈로그만 늘리고 SKILL.md·README 의 «N개 축» 을 그대로 두면 절차를 읽는 AI 가 옛 개수에서 멈춘다
+   (카탈로그가 20개로 늘었는데 SKILL.md 는 «12축 모두» 에 머물러 있었다). */
+const axisCount = uniq(bn).length;
+const COUNT_RE = [/(\d+)\s*개\s*«?\s*축/g, /축\s*카탈로그\s*(\d+)\s*개/g, /(\d+)\s*축\s*모두/g, /축이\s*(\d+)\s*개/g, /지금\s*(\d+)\s*개다/g];
+let countBad = 0;
+if (axisCount) {
+  for (const f of ['SKILL.md', 'README.md', 'references/axes.md']) {
+    if (!ex(f)) continue;
+    const t = rd(f);
+    for (const re of COUNT_RE) for (const m of t.matchAll(re)) {
+      if (Number(m[1]) !== axisCount) { countBad++; no(f + ' — «' + m[0] + '» 인데 카탈로그는 ' + axisCount + '개'); }
+    }
+  }
+  if (!countBad) ok('SKILL.md·README·카탈로그에 적힌 축 개수가 ' + axisCount + '개로 맞는다');
+}
+
 console.log('');
 if (bad) { console.log('✗ 어긋남 ' + bad + '건 — 고친 뒤 올리세요 (CONTRIBUTING.md)'); process.exit(1); }
 console.log('✓ 통과 — 올려도 됩니다');

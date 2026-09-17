@@ -1205,6 +1205,23 @@ for (const f of cases) {
   miss.length ? no('cases/' + f + ' — 빠진 것: ' + miss.join(', ')) : ok('cases/' + f);
 }
 
+console.log('\n[6] 문서에 적힌 축 개수 — 카탈로그와 맞는가');
+/* 축은 늘어난다. 카탈로그만 늘리고 SKILL.md·README 의 «N개 축» 을 그대로 두면 절차를 읽는 AI 가 옛 개수에서 멈춘다
+   (카탈로그가 20개로 늘었는데 SKILL.md 는 «12축 모두» 에 머물러 있었다). */
+const axisCount = uniq(bn).length;
+const COUNT_RE = [/(\d+)\s*개\s*«?\s*축/g, /축\s*카탈로그\s*(\d+)\s*개/g, /(\d+)\s*축\s*모두/g, /축이\s*(\d+)\s*개/g, /지금\s*(\d+)\s*개다/g];
+let countBad = 0;
+if (axisCount) {
+  for (const f of ['SKILL.md', 'README.md', 'references/axes.md']) {
+    if (!ex(f)) continue;
+    const t = rd(f);
+    for (const re of COUNT_RE) for (const m of t.matchAll(re)) {
+      if (Number(m[1]) !== axisCount) { countBad++; no(f + ' — «' + m[0] + '» 인데 카탈로그는 ' + axisCount + '개'); }
+    }
+  }
+  if (!countBad) ok('SKILL.md·README·카탈로그에 적힌 축 개수가 ' + axisCount + '개로 맞는다');
+}
+
 console.log('');
 if (bad) { console.log('✗ 어긋남 ' + bad + '건 — 고친 뒤 올리세요 (CONTRIBUTING.md)'); process.exit(1); }
 console.log('✓ 통과 — 올려도 됩니다');
@@ -1214,7 +1231,7 @@ console.log('✓ 통과 — 올려도 됩니다');
 ````````markdown
 ---
 name: axis-audit
-description: 코드베이스를 12개 «축» 으로 한 번에 전수 훑어 단위시험이 놓친 구멍을 찾는 범용 검수 절차. 축 카탈로그·치명도 기준·검수 대장(어디까지 훑었나)·산출물 신선도 검사기를 함께 쓴다. 검수·감사·구조 점검, ERD·상태전이표·권한표·유스케이스 같은 산출물 만들기, «버그나 헛점 없는지 훑어 줘» 류 요청에 쓴다. audit, review, code audit, invariant, coverage gap, ERD, use case.
+description: 코드베이스를 20개 «축» 으로 한 번에 전수 훑어 단위시험이 놓친 구멍을 찾는 범용 검수 절차. 축 카탈로그·치명도 기준·검수 대장(어디까지 훑었나)·산출물 신선도 검사기를 함께 쓴다. 검수·감사·구조 점검, ERD·상태전이표·권한표·유스케이스 같은 산출물 만들기, «버그나 헛점 없는지 훑어 줘» 류 요청에 쓴다. audit, review, code audit, invariant, coverage gap, ERD, use case.
 ---
 
 # 축 검수 (axis audit)
@@ -1227,7 +1244,7 @@ description: 코드베이스를 12개 «축» 으로 한 번에 전수 훑어 �
 
 «검수 끝냈는데 새 축으로 훑으면 또 나온다» 의 원인은 둘뿐이다.
 
-1. **덜 훑었다** — 그때 훑은 축이 한둘이었다. 축이 12개면 열 방향이 그대로 남아 있다.
+1. **덜 훑었다** — 그때 훑은 축이 한둘이었다. 축이 20개면 열여덟 방향이 그대로 남아 있다.
 2. **«검수 완료» 의 뜻이 없었다** — 어느 구역을 · 어느 축으로 · 어느 깊이까지 훑었는지 기록이 없으니,
    그 뒤 코드가 바뀌어 다시 썩었는지도 알 수 없다.
 
@@ -1254,7 +1271,7 @@ description: 코드베이스를 12개 «축» 으로 한 번에 전수 훑어 �
 코드를 사람이 말하는 단위로 5~15구역으로 나눈다(예: 인증·결재·휴가·급여·파일·알림·관리자).
 구역마다 **대표 경로(파일 글롭)** 를 적어 둔다 — 대장의 썩음 판정이 이 글롭을 쓴다.
 
-### 2. 전 축을 훑는다 (기본값: 12축 모두)
+### 2. 전 축을 훑는다 (기본값: 20축 모두)
 `references/axes.md` 의 축 카탈로그를 **위에서부터 끝까지** 돈다. 축마다 아래 네 걸음이 같다.
 
 1. **전수 목록을 코드에서 뽑는다** — 손으로 세지 않는다(표·상태·입구·권한·발송…).
@@ -1311,7 +1328,7 @@ description: 코드베이스를 12개 «축» 으로 한 번에 전수 훑어 �
 
 | 파일 | 무엇 |
 |---|---|
-| `references/axes.md` | **축 카탈로그 12개** — 축마다 «무엇을 전수로 세나 · 뽑는 법 · 전형적 구멍 · 못질» |
+| `references/axes.md` | **축 카탈로그 20개** — 축마다 «무엇을 전수로 세나 · 뽑는 법 · 전형적 구멍 · 못질» |
 | `references/severity.md` | 치명도 기준 · 보고 서식 · 고칠 것/정책/보류 나누는 법 |
 | `references/generators.md` | 산출물 생성기 만드는 법 (코드에서 뽑기 · `--check` · 시험으로 못질) |
 | `templates/AUDIT.md` | 검수 기록 서식 → `docs/audit/AUDIT-<날짜>.md` |
@@ -1324,10 +1341,12 @@ description: 코드베이스를 12개 «축» 으로 한 번에 전수 훑어 �
 ## 검사기
 
 ```sh
-node .claude/skills/axis-audit/scripts/audit-check.mjs            # 산출물·대장 검사 (어긋나면 2)
-node .claude/skills/axis-audit/scripts/audit-check.mjs --write    # 어긋난 산출물을 다시 씀
-node .claude/skills/axis-audit/scripts/audit-check.mjs --ledger   # 대장만
+node <skill>/scripts/audit-check.mjs            # 산출물·대장 검사 (어긋나면 2)
+node <skill>/scripts/audit-check.mjs --write    # 어긋난 산출물을 다시 씀
+node <skill>/scripts/audit-check.mjs --ledger   # 대장만
 ```
+
+`<skill>` 은 이 SKILL.md 가 있는 폴더다(README 대로 받았으면 `.axis-audit`). 명령은 검수 대상 프로젝트 뿌리에서 돌린다.
 
 - `check` 명령이 있으면 그 종료코드로 판단한다.
 - 없으면 **파일 백업 → `generate` 실행 → 내용 비교 → 원래대로 되돌림**
@@ -1374,7 +1393,7 @@ node .claude/skills/axis-audit/scripts/audit-check.mjs --ledger   # 대장만
 # 검수 기록 — YYYY-MM-DD
 
 - **대상**: <저장소·범위>  · **커밋**: `<sha>`
-- **돈 축**: 1~12 (건너뜀: 19 — 이유)
+- **돈 축**: 1~20 (건너뜀: 19 — 이유)
 - **결과**: 치명 0 · 높음 2 · 중간 5 · 낮음 3 · 잠재 1
 - **실데이터**: 읽기만 함 (쓰기·삭제·발송 없음)
 
