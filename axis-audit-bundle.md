@@ -139,14 +139,25 @@ node scripts/skill-lint.mjs
 
 ## 4. 커밋·올리기
 
+여러 프로젝트·여러 AI 도구가 같은 저장소에 올린다. 그사이 누가 먼저 올렸을 수 있으므로 **받아서 합친 뒤에 올린다.**
+명령은 이 저장소 폴더 안에서 돌린다(프로젝트에서 받았다면 `.axis-audit/` 안).
+
 ```sh
+node scripts/bundle.mjs                # 합본(axis-audit-bundle.md)도 새로 만든다
 git add -A
-git commit -m "축 13 기록·추적 추가 — <프로젝트>에서 삭제 이력 누락을 잡음"
+git commit -m "축 13 기록·추적 추가 — <프로젝트 성격>에서 삭제 이력 누락을 잡음"
+git pull --rebase                      # 남이 올린 것 위에 내 커밋을 얹는다
+node scripts/skill-lint.mjs            # 합친 뒤에도 맞는지 다시 본다
 git push
 ```
 
 커밋 한 줄 서식: **`<무엇을 바꿨나> — <어디서 배웠나>`**.
 어디서 배웠는지가 없으면 나중에 그 줄을 믿을지 판단할 수 없다.
+
+**부딪혔을 때**
+- 합본이 충돌하면 손으로 고치지 않는다 — `node scripts/bundle.mjs` 로 다시 만들고 `git add axis-audit-bundle.md` → `git rebase --continue`.
+- 합친 뒤 skill-lint 가 **축 번호 겹침**을 알리면, 늦게 올리는 쪽이 자기 축을 다음 번호로 민다.
+- push 가 거절되면 `git pull --rebase` 부터 다시 한다. **`--force` 는 쓰지 않는다** — 남이 올린 배움이 지워진다.
 
 ## 5. 되돌아보기 (분기에 한 번)
 
@@ -170,40 +181,61 @@ git push
 단위시험이 놓친 구멍을 한 번에 최대한 많이 찾아낸다.
 
 - 언어·프레임워크 무관 (검사기는 node 만 있으면 돈다)
+- AI 도구 무관 — Claude Code · Codex · Grok Build 가 같은 저장소를 받아 같은 절차로 검수한다
 - 훑은 자리를 **검수 대장**에 남겨, 다음 검수는 «썩은 칸» 만 다시 본다
-- 다른 프로젝트에서 배운 축·사례를 **여기로 되돌려** 모두가 쓴다 → `CONTRIBUTING.md`
+- 여러 프로젝트·여러 도구에서 배운 축·사례를 **여기로 되돌려** 모두가 쓴다 → `CONTRIBUTING.md`
 
-## 설치 (프로젝트에 붙이기)
+## AI 에게 — «vcsoo/bugfix 로 검수해» 를 받았다면
 
-```sh
-# 방법 1) 스킬 폴더로 그대로 복제 — 가장 간단하다
-git clone https://github.com/vcsoo/bugfix .claude/skills/axis-audit
+어느 도구든 이 순서대로 한다.
 
-# 방법 2) 하위모듈로 — 본체를 갱신해 쓰고 싶을 때
-git submodule add https://github.com/vcsoo/bugfix .claude/skills/axis-audit
+1. **git 으로 받는다. 웹페이지로 읽지 않는다** — 웹 읽기 도구는 긴 문서를 요약해 넘겨서 축이 빠진다.
 
-# 방법 3) 개인 스킬로 (모든 프로젝트에서)
-git clone https://github.com/vcsoo/bugfix ~/.claude/skills/axis-audit
+   ```sh
+   git clone https://github.com/vcsoo/bugfix .axis-audit     # 이미 있으면: git -C .axis-audit pull
+   ```
+
+   검수 대상 저장소에 섞이지 않게, `.git/info/exclude` 에 `.axis-audit/` 가 없으면 한 줄 더한다.
+2. **`.axis-audit/SKILL.md` 절차대로 전 축을 돈다.** 검수 기록·대장은 대상 프로젝트의 `docs/audit/` 에 둔다.
+3. **끝나면 배운 것을 되돌린다** — `.axis-audit/CONTRIBUTING.md` 를 읽고 사례·축을 제안해, 승인되면 그 문서대로 올린다.
+   이 저장소에 올릴 수 없는 환경이면 올릴 파일 내용을 사람에게 건넨다.
+
+## 늘 켜 두기 — 저장소 이름을 말하지 않아도 되게
+
+도구의 전역 지시 파일에 아래 문단을 넣어 두면 «검수해 줘» 만으로 위 절차를 탄다.
+스킬을 복사해 두는 것이 아니라 «그때그때 받아 와라» 는 지시라서 낡지 않는다.
+
+| 도구 | 전역 지시 파일 |
+|---|---|
+| Claude Code | `~/.claude/CLAUDE.md` |
+| Codex | `~/.codex/AGENTS.md` |
+| Grok Build | `~/.grok/AGENTS.md` |
+
+```markdown
+## 코드 검수
+코드 검수·감사·구조 점검, «버그나 헛점 없는지 훑어 줘» 요청을 받으면 https://github.com/vcsoo/bugfix 로 한다.
+웹페이지로 읽지 말고 `git clone https://github.com/vcsoo/bugfix .axis-audit`
+(이미 있으면 `git -C .axis-audit pull`) 로 받은 뒤, `.axis-audit/README.md` 의 «AI 에게» 절차를 따른다.
 ```
 
-그다음 프로젝트 뿌리에 설정 파일을 둔다.
+## 프로젝트 쪽에 두는 것
+
+스킬은 프로젝트에 복사해 두지 않는다 — 복사본은 그날부터 낡는다. 프로젝트에 남는 것은 설정과 기록뿐이다.
 
 ```sh
-cp .claude/skills/axis-audit/templates/audit.json ./audit.json
-mkdir -p docs/audit && cp .claude/skills/axis-audit/templates/LEDGER.md docs/audit/LEDGER.md
+cp .axis-audit/templates/audit.json ./audit.json
+mkdir -p docs/audit && cp .axis-audit/templates/LEDGER.md docs/audit/LEDGER.md
 ```
 
-## 쓰는 법
-
-- AI 에게: **«축 검수 해 줘»** / «헛점 없는지 훑어 줘» — 스킬이 걸리면 `SKILL.md` 절차대로 전 축을 돈다
-- 사람이 직접: `SKILL.md` → `references/axes.md` 순서대로 읽고 표를 채운다
-- 검사기:
+## 검사기
 
 ```sh
-node .claude/skills/axis-audit/scripts/audit-check.mjs          # 산출물·대장 검사 (어긋나면 2)
-node .claude/skills/axis-audit/scripts/audit-check.mjs --write  # 어긋난 산출물 다시 쓰기
-node .claude/skills/axis-audit/scripts/skill-lint.mjs           # 이 스킬 자체가 망가졌는지 (기여 전 필수)
+node .axis-audit/scripts/audit-check.mjs          # 산출물·대장 검사 (어긋나면 2)
+node .axis-audit/scripts/audit-check.mjs --write  # 어긋난 산출물 다시 쓰기
+node .axis-audit/scripts/skill-lint.mjs           # 이 스킬 자체가 망가졌는지 (기여 전 필수)
 ```
+
+사람이 직접 검수할 때는 `SKILL.md` → `references/axes.md` 순서대로 읽고 표를 채운다.
 
 ## 구조
 
@@ -216,6 +248,7 @@ node .claude/skills/axis-audit/scripts/skill-lint.mjs           # 이 스킬 자
 | `templates/` | 검수 기록·대장·설정·새 축·사례 서식 |
 | `scripts/audit-check.mjs` | 산출물 신선도 + 대장 썩음 검사기 |
 | `scripts/skill-lint.mjs` | 카탈로그·사례가 서식을 지키는지 검사 |
+| `scripts/bundle.mjs` | 스킬 전체를 md 한 장(`axis-audit-bundle.md`)으로 싸고 되푸는 도구 |
 | `cases/` | **실제로 잡은 사례** — 어느 프로젝트에서 어느 축으로 무엇을 잡았나 |
 | `CONTRIBUTING.md` | **다른 프로젝트에서 배운 것을 여기에 올리는 법** |
 
@@ -1210,8 +1243,9 @@ description: 코드베이스를 12개 «축» 으로 한 번에 전수 훑어 �
 
 ## 절차
 
-### 0. 규칙부터 확인 (건드리면 안 되는 것)
-프로젝트 규칙 문서(`CLAUDE.md`·`WORK-RULES.md`·`CONTRIBUTING.md` 등)를 먼저 읽는다.
+### 0. 최신으로 받고, 규칙부터 확인 (건드리면 안 되는 것)
+이 스킬 폴더가 git 으로 받은 것이면 **먼저 `git pull`** — 다른 프로젝트·다른 AI 도구가 더한 축·사례가 들어온다.
+그다음 검수 대상 프로젝트의 규칙 문서(`CLAUDE.md`·`AGENTS.md`·`WORK-RULES.md`·`CONTRIBUTING.md` 등)를 읽는다.
 **검수는 읽기만 한다** — 실서버·실데이터에 쓰지 않는다. 지우거나 고치는 점검이 필요하면
 직접 실행하지 말고 «관리자가 직접 누르는 화면·스크립트» 로 만들어 넘긴다.
 프로젝트 규칙이 더 엄하면 그 규칙이 이긴다.
@@ -1258,6 +1292,12 @@ description: 코드베이스를 12개 «축» 으로 한 번에 전수 훑어 �
 `node <skill>/scripts/audit-check.mjs` 가 대장을 읽어, 그 칸을 훑은 뒤 **대표 경로가 바뀐 구역**을
 `썩음` 으로 표시한다. 다음 검수는 그 칸만 다시 돌면 된다 — 전체를 다시 훑지 않는다.
 
+### 6. 되돌리기 — 배운 것을 이 스킬에 올린다
+이 스킬은 여러 프로젝트·여러 AI 도구의 검수에서 배운 것을 모아 자란다. 보고를 마쳤으면 이 폴더의 `CONTRIBUTING.md` 를 읽고
+**되돌릴 것을 사람에게 제안**한다 — 기존 축으로 잡은 구멍은 사례, 어느 축에도 안 들어가는 구멍은 새 축,
+절차에서 헛돈 곳은 이 문서 고침. 승인되면 그 문서대로 올린다(올릴 수 없는 환경이면 올릴 파일 내용을 건넨다).
+되돌릴 것이 없으면 검수 기록에 «없음 — 이유» 를 적는다. 말없이 건너뛴 되돌리기와 구분하기 위해서다.
+
 ## 절대 규칙
 
 1. **실서버는 읽기만.** 쓰기·삭제·발송이 필요한 점검은 만들지 말고 사람에게 넘긴다.
@@ -1278,6 +1318,8 @@ description: 코드베이스를 12개 «축» 으로 한 번에 전수 훑어 �
 | `templates/LEDGER.md` | **검수 대장** 서식 → `docs/audit/LEDGER.md` |
 | `templates/audit.json` | 산출물·구역 설정 예시 → 저장소 뿌리의 `audit.json` |
 | `scripts/audit-check.mjs` | **산출물 신선도 + 대장 썩음 검사기** (아래) |
+| `cases/` | 실제로 잡은 사례 — 비슷한 구멍을 찾을 때 참고 |
+| `CONTRIBUTING.md` | **배운 것을 이 스킬에 되돌리는 법** (6단계) |
 
 ## 검사기
 
@@ -1295,10 +1337,10 @@ node .claude/skills/axis-audit/scripts/audit-check.mjs --ledger   # 대장만
 
 프로젝트의 시험 묶음에서 이 명령을 부르면, 산출물·대장을 갱신하지 않은 커밋이 배포 전에 걸린다.
 
-## 다른 프로젝트에 옮기기
+## 다른 프로젝트에서 쓰기
 
-이 폴더(`.claude/skills/axis-audit/`)를 통째로 복사하면 끝이다. 프로젝트에 종속된 것은
-스킬 안에 없다 — 프로젝트 쪽에 두는 것은 `audit.json`(구역·산출물 목록)과 `docs/audit/` 뿐이다.
+스킬을 프로젝트에 복사해 두지 않는다 — 복사본은 그날부터 낡는다. 검수할 때마다 저장소에서 받는다(`README.md` «AI 에게»).
+프로젝트에 종속된 것은 스킬 안에 없다 — 프로젝트 쪽에 두는 것은 `audit.json`(구역·산출물 목록)과 `docs/audit/` 뿐이다.
 ````````
 
 <!-- file: templates/audit.json -->
@@ -1360,6 +1402,11 @@ node .claude/skills/axis-audit/scripts/audit-check.mjs --ledger   # 대장만
 | 관문 한 곳으로 | `src/...` |
 | 산출물 + `--check` | `docs/...` · `tools/...` |
 | 규칙 문서 한 줄 | `WORK-RULES.md` … |
+
+## 스킬에 되돌린 것
+
+- 사례 `cases/YYYY-MM-DD-<성격>-<한단어>.md` · 새 축 제안 … · SKILL.md 고침 …
+- 없으면 «없음 — 이유» (말없이 비워 두지 않는다)
 
 ## 정정
 

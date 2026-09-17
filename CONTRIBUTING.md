@@ -55,14 +55,25 @@ node scripts/skill-lint.mjs
 
 ## 4. 커밋·올리기
 
+여러 프로젝트·여러 AI 도구가 같은 저장소에 올린다. 그사이 누가 먼저 올렸을 수 있으므로 **받아서 합친 뒤에 올린다.**
+명령은 이 저장소 폴더 안에서 돌린다(프로젝트에서 받았다면 `.axis-audit/` 안).
+
 ```sh
+node scripts/bundle.mjs                # 합본(axis-audit-bundle.md)도 새로 만든다
 git add -A
-git commit -m "축 13 기록·추적 추가 — <프로젝트>에서 삭제 이력 누락을 잡음"
+git commit -m "축 13 기록·추적 추가 — <프로젝트 성격>에서 삭제 이력 누락을 잡음"
+git pull --rebase                      # 남이 올린 것 위에 내 커밋을 얹는다
+node scripts/skill-lint.mjs            # 합친 뒤에도 맞는지 다시 본다
 git push
 ```
 
 커밋 한 줄 서식: **`<무엇을 바꿨나> — <어디서 배웠나>`**.
 어디서 배웠는지가 없으면 나중에 그 줄을 믿을지 판단할 수 없다.
+
+**부딪혔을 때**
+- 합본이 충돌하면 손으로 고치지 않는다 — `node scripts/bundle.mjs` 로 다시 만들고 `git add axis-audit-bundle.md` → `git rebase --continue`.
+- 합친 뒤 skill-lint 가 **축 번호 겹침**을 알리면, 늦게 올리는 쪽이 자기 축을 다음 번호로 민다.
+- push 가 거절되면 `git pull --rebase` 부터 다시 한다. **`--force` 는 쓰지 않는다** — 남이 올린 배움이 지워진다.
 
 ## 5. 되돌아보기 (분기에 한 번)
 
