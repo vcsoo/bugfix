@@ -184,7 +184,7 @@ function parseLedger(txt) {
     const c = t.split('|').slice(1, -1).map((x) => x.trim());
     if (c.length < 5) continue;
     if (/^-+$/.test(c[0].replace(/[: ]/g, '')) || /^구역$/.test(c[0])) continue;
-    rows.push({ area: c[0], axis: c[1], depth: (c[2] || '').toUpperCase(), date: c[3], commit: c[4], note: c[5] || '', view: c[6] || '개발자', mode: c[7] || '정밀' });
+    rows.push({ area: c[0], axis: c[1], depth: (c[2] || '').toUpperCase(), date: c[3], commit: c[4], note: c[5] || '', view: c[6] || '개발자', mode: c[7] || '정밀', model: c[8] || '' });
   }
   return rows;
 }
@@ -275,6 +275,18 @@ function checkFindings() {
   const rejected = new Set(rows.filter((r) => r.state === '기각' && r.print).map((r) => normPrint(r.print)));
   for (const r of rows) if (r.state !== '기각' && r.print && rejected.has(normPrint(r.print))) hm(r.id + ' — 기각된 발견과 지문이 같습니다 (새로 올리지 말고 기각에 붙이세요)');
   checkCitations(rows);
+  /* 기각도 썩는다 — 이력의 «→ 기각 — 반증: `파일:줄@커밋`» 에서 그 파일이 커밋 이후 바뀌었으면 반증이 사라졌을 수 있다 */
+  if (hasGit()) {
+    const hist = fs.readFileSync(fp, 'utf8');
+    const stillRejected = new Set(rows.filter((r) => r.state === '기각').map((r) => r.id));
+    for (const m of hist.matchAll(/(F-\d+)[^\n]*?기각[^\n]*?`((?:[\w.-]+\/)*[\w.-]+\.[a-z0-9]{1,6}):\d+@([0-9a-f]{6,40})`/gi)) {
+      const [, id, file, sha] = m;
+      if (!stillRejected.has(id)) continue;
+      if (!isCommit(sha)) { hm(id + ' — 기각 반증의 커밋(' + sha + ')을 찾을 수 없습니다'); continue; }
+      if (changedSince(sha, [file])) hm(id + ' — 기각 반증 코드(' + file + ')가 ' + sha + ' 이후 바뀌었습니다 (기각 다시 볼 것)');
+    }
+    for (const r of rows) if (r.state === '기각' && !new RegExp(r.id + '[^\\n]*기각[^\\n]*@[0-9a-f]{6,}').test(hist)) hm(r.id + ' — 기각인데 반증이 «파일:줄@커밋» 꼴로 이력에 없습니다');
+  }
   const open = rows.filter((r) => r.state === '열림' || r.state === '다시 열림');
   const e1 = rows.filter((r) => r.ev === 'E1' && r.state !== '고침');
   console.log('  열림 ' + open.length + ' · 확인할 것(E1) ' + e1.length + ' · 기각 ' + rows.filter((r) => r.state === '기각').length);
@@ -285,7 +297,7 @@ function parseFindings(txt) {
   for (const line of txt.split('\n')) {
     const c = line.trim().startsWith('|') ? line.trim().split('|').slice(1, -1).map((x) => x.trim()) : [];
     if (c.length < 5 || !/^F-\d+/.test(c[0])) continue;
-    rows.push({ id: c[0], sev: c[1].toUpperCase(), ev: c[2].toUpperCase(), state: c[3], exp: c[4], view: c[5] || '개발자', axis: c[6] || '', area: c[7] || '', title: c[8] || '', print: c[9] || '' });
+    rows.push({ id: c[0], sev: c[1].toUpperCase(), ev: c[2].toUpperCase(), state: c[3], exp: c[4], view: c[5] || '개발자', axis: c[6] || '', area: c[7] || '', title: c[8] || '', print: c[9] || '', model: c[10] || '' });
   }
   return rows;
 }
@@ -334,13 +346,20 @@ function yieldReport() {
   for (const r of fr) { const x = get(key(r.view, r.axis)); x.n++; if (['고침', '정책', '보류', '사람이 실행'].includes(r.state)) x.acc++; if (r.state === '기각') x.rej++; }
   for (const r of lr) if (['L2', 'L3'].includes(r.depth)) get(key(r.view, r.axis)).looks++;
   const list = [...st.entries()].sort((a, b) => b[1].acc - a[1].acc || b[1].n - a[1].n);
+  /* 모델별 — 어느 모델·도구로 돌렸을 때 받아들여진 비율이 높은가 */
+  const byModel = new Map();
+  for (const r of fr) { const m = r.model || '(모델 안 적음)'; const x = byModel.get(m) || { n: 0, acc: 0, rej: 0 }; x.n++; if (['고침', '정책', '보류', '사람이 실행'].includes(r.state)) x.acc++; if (r.state === '기각') x.rej++; byModel.set(m, x); }
   if (!list.length) { hm('발견·대장이 비어 적중률을 셀 수 없습니다'); return; }
   for (const [k, x] of list) {
     const rate = x.n ? Math.round((x.acc / x.n) * 100) + '%' : '-';
     let flag = '';
     if (x.n >= 3 && x.rej / x.n >= 0.5) flag = '  ← 기각이 많음: 이 칸의 질문을 고칠 것';
-    else if (x.looks >= 3 && x.n === 0) flag = '  ← ' + x.looks + '번 봤는데 0건: 너무 얕게 본 건 아닌지';
+    else if (x.looks >= 3 && x.n === 0) flag = '  ← ' + x.looks + '번 봤는데 0건 — 정상일 수 있음. 개수가 아니라 깊이(L2·L3·완료 줄)를 확인';
     console.log('  ' + k.padEnd(14) + ' 발견 ' + String(x.n).padStart(3) + ' · 받아들여짐 ' + rate.padStart(4) + ' · 기각 ' + x.rej + ' · 본 횟수 ' + x.looks + flag);
+  }
+  if (byModel.size) {
+    console.log('[적중률] 모델별');
+    for (const [m, x] of byModel) console.log('  ' + m.padEnd(16) + ' 발견 ' + String(x.n).padStart(3) + ' · 받아들여짐 ' + (Math.round((x.acc / x.n) * 100) + '%').padStart(4) + ' · 기각 ' + x.rej);
   }
 }
 
