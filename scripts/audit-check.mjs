@@ -7,7 +7,8 @@
      node audit-check.mjs --write        어긋난 산출물을 다시 씀 (생성기를 실제로 돌린다)
      node audit-check.mjs --ledger       대장만
      node audit-check.mjs --artifacts    산출물만
-     node audit-check.mjs --strict       대장의 «썩음·안 훑음» 도 실패로 친다
+     node audit-check.mjs --strict       대장의 «썩음·안 훑음»·만료된 정책도 실패로 친다
+     node audit-check.mjs --catalog      이 스킬의 축·시선 카탈로그 지문만 찍는다 (대장의 «카탈로그» 줄에 적는 값)
      node audit-check.mjs --config <경로> --root <경로>
 
    종료코드:  0 통과 · 1 설정·실행 문제 · 2 어긋남(산출물 불일치, --strict 면 대장도)
@@ -21,6 +22,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import crypto from 'node:crypto';
 
 const argv = process.argv.slice(2);
 const has = (f) => argv.includes(f);
@@ -31,6 +33,19 @@ const WRITE = has('--write');
 const STRICT = has('--strict');
 const ONLY_LEDGER = has('--ledger');
 const ONLY_ART = has('--artifacts');
+const TODAY = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
+
+/* ── 스킬 카탈로그 지문: 축·시선 문서가 바뀌면 달라진다. 대장의 «카탈로그» 줄과 다르면 «새 축·구멍이 생겼으니 전부 다시» ── */
+const SKILL_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+function catalogPrint() {
+  const h = crypto.createHash('sha256');
+  for (const f of ['references/axes.md', 'references/perspectives.md']) {
+    const p = path.join(SKILL_DIR, f);
+    h.update(f + '\n' + (fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '') + '\n');
+  }
+  return h.digest('hex').slice(0, 10);
+}
+if (has('--catalog')) { console.log(catalogPrint()); process.exit(0); }
 
 /* ── 설정 찾기 ── */
 const CONFIG_NAMES = ['audit.json', '.audit.json', 'docs/audit/audit.json', '.claude/audit.json'];
@@ -51,6 +66,10 @@ try { CFG = JSON.parse(fs.readFileSync(CFG_PATH, 'utf8')); }
 catch (e) { console.error('설정 파일을 읽지 못했습니다: ' + CFG_PATH + '\n  ' + e.message); process.exit(1); }
 
 const AREAS = Array.isArray(CFG.areas) ? CFG.areas : [];
+const SHARED = Array.isArray(CFG.shared) ? CFG.shared : [];          /* 여러 구역이 함께 쓰는 파일 — 바뀌면 모든 칸이 다시 볼 칸 */
+const FULL_DAYS = Number(CFG.fullEveryDays === undefined ? 30 : CFG.fullEveryDays);
+const FINDINGS = CFG.findings || 'docs/audit/FINDINGS.md';
+const PERSPECTIVES = Array.isArray(CFG.perspectives) && CFG.perspectives.length ? CFG.perspectives : ['기획자', '개발자', '퍼블리셔', '고객', '운영자', '공격자'];
 const ARTIFACTS = Array.isArray(CFG.artifacts) ? CFG.artifacts : [];
 /* axes 를 비우면 카탈로그(references/axes.md)의 전 축 — «기본은 전 축을 도는 것» 이다.
    번호를 여기에 적어 두면 카탈로그가 늘 때 뒤처진다(1~12 에 머물러 13번부터는 안 훑어도 조용했다). */
@@ -161,7 +180,7 @@ function parseLedger(txt) {
     const c = t.split('|').slice(1, -1).map((x) => x.trim());
     if (c.length < 5) continue;
     if (/^-+$/.test(c[0].replace(/[: ]/g, '')) || /^구역$/.test(c[0])) continue;
-    rows.push({ area: c[0], axis: c[1], depth: (c[2] || '').toUpperCase(), date: c[3], commit: c[4], note: c[5] || '' });
+    rows.push({ area: c[0], axis: c[1], depth: (c[2] || '').toUpperCase(), date: c[3], commit: c[4], note: c[5] || '', view: c[6] || '개발자' });
   }
   return rows;
 }
@@ -172,41 +191,96 @@ function checkLedger() {
     hm('대장이 없습니다. 스킬의 templates/LEDGER.md 를 ' + LEDGER + ' 로 복사해 쓰세요');
     return;
   }
-  const rows = parseLedger(fs.readFileSync(lp, 'utf8'));
+  const ledgerTxt = fs.readFileSync(lp, 'utf8');
+  const rows = parseLedger(ledgerTxt);
   if (!rows.length) { hm('대장에 줄이 없습니다 (아직 아무 축도 훑지 않았습니다)'); return; }
   if (!AREAS.length) { hm('audit.json 에 areas 가 없어 구역별 썩음을 볼 수 없습니다'); }
 
-  const seen = new Set(rows.map((r) => r.area + '|' + r.axis));
-  const pathsOf = (id) => { const a = AREAS.find((x) => x.id === id || x.name === id); return a ? (a.paths || []) : []; };
+  /* 카탈로그가 바뀌었나 — 새 축·새 구멍·새 시선이 생겼으면 옛 칸을 그대로 믿지 않는다 */
+  const cat = (/\*\*카탈로그\*\*\s*:\s*`?([0-9a-f]{6,})`?/.exec(ledgerTxt) || [])[1];
+  const nowCat = catalogPrint();
+  const catChanged = !!cat && cat !== nowCat && !/^0+$/.test(cat);
+  if (!cat || /^0+$/.test(cat)) hm('대장에 «카탈로그» 줄이 없습니다 — 이번 회차 스킬 지문(' + nowCat + ')을 적으세요');
+  else if (catChanged) (STRICT ? no : hm)('스킬의 축·시선 카탈로그가 바뀌었습니다 (' + cat + ' → ' + nowCat + ') — 새 축·구멍이 생겼으니 모든 칸을 다시 볼 칸으로 봅니다');
 
-  let stale = 0, shallow = 0;
-  for (const r of rows) {
-    const ps = pathsOf(r.area);
-    if (r.depth && r.depth !== 'L3') shallow++;
-    if (!ps.length || !hasGit() || !r.commit || /^-+$/.test(r.commit)) continue;
-    if (!isCommit(r.commit)) { hm(r.area + ' × 축' + r.axis + ' — 대장의 커밋(' + r.commit + ')을 찾을 수 없습니다'); continue; }
-    if (changedSince(r.commit, ps)) { stale++; console.log('  ↻ ' + r.area + ' × 축' + r.axis + ' — 훑은 뒤 코드가 바뀌었습니다 (다시 볼 칸)'); }
+  /* 덮인 칸: L2·L3·N/A 만 센다. L1 은 «일부만 봄» — 완료가 아니다 */
+  const DONE = (d) => d === 'L2' || d === 'L3' || d === 'N/A' || d === 'NA';
+  const latest = new Map(); /* 구역|축 → 가장 최근 줄 (덮인 것만) */
+  for (const r of rows) if (DONE(r.depth)) {
+    const k = r.area + '|' + r.axis; const prev = latest.get(k);
+    if (!prev || (r.date || '') >= (prev.date || '')) latest.set(k, r);
+  }
+  const pathsOf = (id) => { const a = AREAS.find((x) => x.id === id || x.name === id); return a ? (a.paths || []) : []; };
+  const ageDays = (d) => (/^\d{4}-\d{2}-\d{2}$/.test(d || '') ? Math.floor((Date.parse(TODAY) - Date.parse(d)) / 86400000) : 0);
+
+  let stale = 0;
+  const shallow = rows.filter((r) => r.depth === 'L1').length;
+  for (const r of latest.values()) {
+    const why = [];
+    if (catChanged) why.push('카탈로그 바뀜');
+    if (FULL_DAYS > 0 && ageDays(r.date) > FULL_DAYS) why.push(ageDays(r.date) + '일 지남');
+    const ps = [...pathsOf(r.area), ...SHARED];
+    if (ps.length && hasGit() && r.commit && !/^-+$/.test(r.commit)) {
+      if (!isCommit(r.commit)) hm(r.area + ' × 축' + r.axis + ' — 대장의 커밋(' + r.commit + ')을 찾을 수 없습니다');
+      else {
+        if (pathsOf(r.area).length && changedSince(r.commit, pathsOf(r.area))) why.push('구역 코드 바뀜');
+        if (SHARED.length && changedSince(r.commit, SHARED)) why.push('공용 파일 바뀜');
+      }
+    }
+    if (why.length) { stale++; if (!catChanged) console.log('  ↻ ' + r.area + ' × 축' + r.axis + ' — ' + why.join(' · ') + ' (다시 볼 칸)'); }
   }
 
   /* 안 훑은 칸 — «한 번에 최대한 많이» 를 지키는 장치 */
   if (!AXES.length) { no('축 카탈로그(references/axes.md)를 읽지 못해 안 훑은 칸을 셀 수 없습니다 — audit.json 에 axes 를 적으세요'); return; }
   const missing = [];
-  for (const a of AREAS) for (const ax of AXES) if (!seen.has(a.id + '|' + String(ax))) missing.push(a.id + '×' + ax);
+  for (const a of AREAS) for (const ax of AXES) if (!latest.has(a.id + '|' + String(ax))) missing.push(a.id + '×' + ax);
   const total = AREAS.length * AXES.length;
   const doneN = total - missing.length;
 
-  console.log('  덮인 칸 ' + doneN + '/' + total + ' · 다시 볼 칸 ' + stale + ' · 깊이 L3 미만 ' + shallow);
+  console.log('  덮인 칸(L2·L3·해당 없음) ' + doneN + '/' + total + ' · 다시 볼 칸 ' + stale + ' · L1(일부만) ' + shallow + '줄');
   if (missing.length) {
     const head = missing.slice(0, 18).join(' ');
-    (STRICT ? no : hm)('아직 안 훑은 칸 ' + missing.length + '개: ' + head + (missing.length > 18 ? ' …' : ''));
-  } else ok('모든 구역 × 축이 한 번씩은 덮였습니다');
+    (STRICT ? no : hm)('아직 안 훑은(또는 L1 만 본) 칸 ' + missing.length + '개: ' + head + (missing.length > 18 ? ' …' : ''));
+  } else ok('모든 구역 × 축이 L2 이상으로 한 번씩은 덮였습니다');
   if (stale && STRICT) no('다시 볼 칸이 ' + stale + '개 있습니다');
+
+  /* 시선 — 한 번도 안 쓴 시선이 있으면 그 사람의 눈으로는 아무것도 안 본 것이다 */
+  const usedViews = new Set(rows.filter((r) => DONE(r.depth)).map((r) => r.view));
+  const unusedViews = PERSPECTIVES.filter((v) => !usedViews.has(v));
+  if (unusedViews.length) (STRICT ? no : hm)('한 번도 L2 이상으로 쓰지 않은 시선: ' + unusedViews.join(' · '));
+  else ok('시선 ' + PERSPECTIVES.length + '개가 모두 한 번 이상 쓰였습니다');
+}
+
+/* ── 3. 발견 대장 ── */
+/* 줄 모양: | 번호 | 등급 | 증거 | 상태 | 만료 | 시선 | 축 | 구역 | 제목 | 지문 | */
+function checkFindings() {
+  const fp = path.join(ROOT, FINDINGS);
+  console.log('\n[발견 대장] 결정·만료 — ' + FINDINGS);
+  if (!fs.existsSync(fp)) { hm('발견 대장이 없습니다. 스킬의 templates/FINDINGS.md 를 ' + FINDINGS + ' 로 복사해 쓰세요'); return; }
+  const rows = [];
+  for (const line of fs.readFileSync(fp, 'utf8').split('\n')) {
+    const c = line.trim().startsWith('|') ? line.trim().split('|').slice(1, -1).map((x) => x.trim()) : [];
+    if (c.length < 5 || !/^F-\d+/.test(c[0])) continue;
+    rows.push({ id: c[0], sev: c[1].toUpperCase(), ev: c[2].toUpperCase(), state: c[3], exp: c[4] });
+  }
+  if (!rows.length) { hm('발견 대장에 줄이 없습니다'); return; }
+  const ids = rows.map((r) => r.id); const dup = ids.filter((x, i) => ids.indexOf(x) !== i);
+  dup.length ? no('발견 번호가 겹칩니다: ' + [...new Set(dup)].join(', ')) : ok('발견 번호 ' + rows.length + '개가 겹치지 않는다');
+  for (const r of rows) {
+    if (!/^E[123]$/.test(r.ev)) hm(r.id + ' — 증거 칸(E1·E2·E3)이 비었거나 형식이 다릅니다');
+    if (r.state === '정책' && r.sev === 'C') no(r.id + ' — 치명인데 «정책» 입니다 (치명은 정책으로 둘 수 없습니다)');
+    if ((r.state === '정책' || r.state === '보류') && !/^\d{4}-\d{2}-\d{2}$/.test(r.exp)) hm(r.id + ' — «' + r.state + '» 인데 만료일이 없습니다');
+    if ((r.state === '정책' || r.state === '보류') && /^\d{4}-\d{2}-\d{2}$/.test(r.exp) && r.exp < TODAY) (STRICT ? no : hm)(r.id + ' — «' + r.state + '» 만료(' + r.exp + ') — 다시 볼 차례입니다');
+  }
+  const open = rows.filter((r) => r.state === '열림' || r.state === '다시 열림');
+  const e1 = rows.filter((r) => r.ev === 'E1' && r.state !== '고침');
+  console.log('  열림 ' + open.length + ' · 확인할 것(E1) ' + e1.length);
 }
 
 /* ── 실행 ── */
 console.log('축 검수 검사기 — ' + path.relative(process.cwd(), CFG_PATH) + '\n');
 if (!ONLY_LEDGER) checkArtifacts();
-if (!ONLY_ART) checkLedger();
+if (!ONLY_ART) { checkLedger(); if (!ONLY_LEDGER) checkFindings(); }
 console.log('');
 if (bad) { console.log('✗ 어긋남 ' + bad + '건' + (warn ? ' · 알림 ' + warn + '건' : '')); process.exit(2); }
 console.log('✓ 통과' + (warn ? ' (알림 ' + warn + '건)' : ''));

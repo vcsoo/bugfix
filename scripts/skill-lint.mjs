@@ -22,8 +22,8 @@ const no = (m) => { bad++; console.log('  ✗ ' + m); };
 
 console.log('[1] 있어야 할 파일');
 const MUST = ['SKILL.md', 'README.md', 'CONTRIBUTING.md',
-  'references/axes.md', 'references/severity.md', 'references/generators.md',
-  'templates/AUDIT.md', 'templates/LEDGER.md', 'templates/audit.json',
+  'references/axes.md', 'references/perspectives.md', 'references/severity.md', 'references/generators.md',
+  'templates/AUDIT.md', 'templates/LEDGER.md', 'templates/FINDINGS.md', 'templates/audit.json',
   'templates/axis-template.md', 'templates/case-template.md',
   'scripts/audit-check.mjs', 'cases/README.md'];
 for (const f of MUST) ex(f) ? ok(f) : no(f + ' 가 없습니다');
@@ -75,6 +75,22 @@ for (const sec of secs) {
 }
 if (!cellBad) ok('모든 축에 필수 칸이 있다 (' + secs.length + '개)');
 
+console.log('\n[4-1] 시선 — 모든 축이 적어도 한 시선에 걸리는가');
+/* 시선 표(perspectives.md 의 «시선 6개» 표)의 «주로 맡는 축» 칸에서 축 번호를 모은다.
+   새 축을 더하고 어느 시선에도 안 넣으면 그 축은 아무도 안 보는 방향이 된다 */
+const persp = ex('references/perspectives.md') ? rd('references/perspectives.md') : '';
+const pRows = [...persp.matchAll(/^\|\s*\*\*([^*|]+)\*\*\s*\|[^|]*\|([^|]*)\|/gm)].map((m) => ({ name: m[1].trim(), axes: [...m[2].matchAll(/\b(\d{1,2})\b/g)].map((x) => Number(x[1])) }));
+if (!pRows.length) no('perspectives.md 에서 시선 표를 찾지 못했습니다');
+else {
+  ok('시선 ' + pRows.length + '개: ' + pRows.map((r) => r.name).join(' · '));
+  const covered = new Set(pRows.flatMap((r) => r.axes));
+  const orphan = uniq(bn).filter((n) => !covered.has(n));
+  orphan.length ? no('어느 시선에도 걸리지 않은 축: ' + orphan.join(', ') + ' — perspectives.md 표의 «주로 맡는 축» 에 넣으세요')
+    : ok('모든 축(' + uniq(bn).length + '개)이 적어도 한 시선에 걸린다');
+  const unknown = [...covered].filter((n) => !bn.includes(n));
+  if (unknown.length) no('시선 표에 카탈로그에 없는 축 번호: ' + unknown.join(', '));
+}
+
 console.log('\n[5] 사례 — 서식을 지키는가');
 const cdir = path.join(ROOT, 'cases');
 const cases = fs.existsSync(cdir) ? fs.readdirSync(cdir).filter((f) => f.endsWith('.md') && f !== 'README.md') : [];
@@ -94,10 +110,10 @@ console.log('\n[6] 문서에 적힌 축 개수 — 카탈로그와 맞는가');
 /* 축은 늘어난다. 카탈로그만 늘리고 SKILL.md·README 의 «N개 축» 을 그대로 두면 절차를 읽는 AI 가 옛 개수에서 멈춘다
    (카탈로그가 20개로 늘었는데 SKILL.md 는 «12축 모두» 에 머물러 있었다). */
 const axisCount = uniq(bn).length;
-const COUNT_RE = [/(\d+)\s*개\s*«?\s*축/g, /축\s*카탈로그\s*(\d+)\s*개/g, /(\d+)\s*축\s*모두/g, /축이\s*(\d+)\s*개/g, /지금\s*(\d+)\s*개다/g];
+const COUNT_RE = [/(\d+)\s*개\s*«?\s*축/g, /축\s*카탈로그\s*(\d+)\s*개/g, /(\d+)\s*축\s*모두/g, /축이\s*(\d+)\s*개/g, /지금\s*(\d+)\s*개다/g, /축\s*(\d+)\s*개\s*모두/g, /×\s*축\s*(\d+)\s*개/g];
 let countBad = 0;
 if (axisCount) {
-  for (const f of ['SKILL.md', 'README.md', 'references/axes.md']) {
+  for (const f of ['SKILL.md', 'README.md', 'references/axes.md', 'references/perspectives.md', 'CONTRIBUTING.md']) {
     if (!ex(f)) continue;
     const t = rd(f);
     for (const re of COUNT_RE) for (const m of t.matchAll(re)) {
