@@ -23,8 +23,11 @@
    ```
 
    검수 대상 저장소에 섞이지 않게, `.git/info/exclude` 에 `.axis-audit/` 가 없으면 한 줄 더한다.
-2. **`.axis-audit/SKILL.md` 절차대로 시선 × 축을 전부 돈다.** 검수 기록·대장·발견 대장은 대상 프로젝트의 `docs/audit/` 에 둔다.
-3. **끝나면 배운 것을 되돌린다** — `.axis-audit/CONTRIBUTING.md` 를 읽고 사례·축을 제안해, 승인되면 그 문서대로 올린다.
+2. **방식을 고른다 — 간편 / 정밀** (`.axis-audit/references/modes.md`). 사람이 말하지 않았으면 두 방식을 보여 주고 한 번 묻는다
+   (`node .axis-audit/scripts/audit-check.mjs --mode` 가 추천과 이유를 낸다). 평소엔 간편(바뀐 곳·핵심 축·시선 2, 비용 약 1/5~1/10),
+   첫 검수·카탈로그 변경·30일 경과·큰 변경·출시 직전엔 정밀(시선 6 × 축 24 전부).
+3. **`.axis-audit/SKILL.md` 절차대로 돈다.** 검수 기록·대장·발견 대장은 대상 프로젝트의 `docs/audit/` 에 둔다.
+4. **끝나면 배운 것을 되돌린다** — `.axis-audit/CONTRIBUTING.md` 를 읽고 사례·축을 제안해, 승인되면 그 문서대로 올린다.
    이 저장소에 올릴 수 없는 환경이면 올릴 파일 내용을 사람에게 건넨다.
 
 ## 늘 켜 두기 — 저장소 이름을 말하지 않아도 되게
@@ -59,6 +62,8 @@ mkdir -p docs/audit && cp .axis-audit/templates/LEDGER.md docs/audit/LEDGER.md &
 ```sh
 node .axis-audit/scripts/audit-check.mjs          # 산출물·대장·발견 대장 검사 (어긋나면 2)
 node .axis-audit/scripts/audit-check.mjs --catalog  # 이 스킬 카탈로그 지문 (대장의 «카탈로그» 줄에 적는다)
+node .axis-audit/scripts/audit-check.mjs --mode     # 간편 / 정밀 추천과 이유
+node .axis-audit/scripts/audit-check.mjs --yield    # 시선 × 축 적중률·기각 비율
 node .axis-audit/scripts/audit-check.mjs --write  # 어긋난 산출물 다시 쓰기
 node .axis-audit/scripts/skill-lint.mjs           # 이 스킬 자체가 망가졌는지 (기여 전 필수)
 ```
@@ -70,6 +75,7 @@ node .axis-audit/scripts/skill-lint.mjs           # 이 스킬 자체가 망가�
 | 경로 | 무엇 |
 |---|---|
 | `SKILL.md` | 검수 절차 (AI 가 읽는 본문) |
+| `references/modes.md` | **간편 / 정밀** — 무엇을 줄이나, 언제 정밀을 추천하나 |
 | `references/perspectives.md` | **시선 6개** — 누구의 눈으로 보나, 시선마다 맡는 축·질문·확인 방법 |
 | `references/axes.md` | **축 카탈로그 24개** + 유도어 표 — 축마다 «무엇을 세나 · 뽑는 법 · 전형적 구멍 · 못질» |
 | `references/severity.md` | 등급 · 증거 수준 · 상태(정책 만료) · 발견 번호와 지문 · 보고 서식 |
@@ -96,3 +102,5 @@ node .axis-audit/scripts/skill-lint.mjs           # 이 스킬 자체가 망가�
 - **«혼자만 다른 칸»** — 여러 곳 중 하나만 다르면 버그일 확률이 높다(Engler 외, *Bugs as Deviant Behavior*, SOSP 2001)
 - **등급** — 도달 가능성 × 되돌릴 수 있나 × 알아챌 수 있나 = FMEA 의 발생도·심각도·검출도
 - **다른 검증자가 돌려 보기** — 외부 근거 없는 LLM 자기 교정은 잘 듣지 않는다(Huang 외, 2023, arXiv:2310.01798)
+- **기각 상태 · 적중률 · 인용 실재 확인 · 보고 상한 · 반박부터** — AI 검수 도구 사용자들의 가장 흔한 불만(사소한 지적 사이에 진짜가 묻힘, 지어낸 함수 이름,
+  같은 지적 반복)과 호평(사람이 «틀렸다» 고 표시한 것에서 배우기, 경로별 지시)에서 가져옴. 검색 요약 기준이며 다수가 업체 글·개인 경험담이다

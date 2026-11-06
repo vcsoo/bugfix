@@ -3,7 +3,7 @@
 
   "_areas": "검수의 가로줄. 사람이 말하는 단위로 5~15개. paths 는 대장의 «썩음» 판정에 쓴다",
   "areas": [
-    { "id": "auth",  "name": "로그인·계정", "paths": ["src/auth/**"] },
+    { "id": "auth",  "name": "로그인·계정", "paths": ["src/auth/**"], "instructions": "세션·토큰은 치명·높음만 보고", "ignore": ["src/auth/vendor/**"] },
     { "id": "order", "name": "주문",        "paths": ["src/order/**", "src/api/order*"] },
     { "id": "admin", "name": "관리자",      "paths": ["src/admin/**"] }
   ],
@@ -18,6 +18,12 @@
   "findings": "docs/audit/FINDINGS.md",
 
   "_perspectives": "돌 시선 이름 목록. 적지 않으면 스킬의 시선 6개 전부 (기획자·개발자·퍼블리셔·고객·운영자·공격자)",
+
+  "_quick": "간편 검수에서 볼 축·시선. 시선은 개발자 + 변경에 맞는 하나가 기본 (references/modes.md)",
+  "quick": { "axes": [2, 3, 4, 5, 6, 10], "perspectives": ["개발자"] },
+
+  "_reportTop": "보고서 «먼저 결정해 주실 것» 에 올리는 최대 개수 (치명·높음 · E2 이상만)",
+  "reportTop": 7,
 
   "_axes": "돌 축 번호 목록 (예: \"axes\": [1, 2, 4, 5]). 적지 않으면 카탈로그의 전 축을 센다 — 기본은 전 축. 시간이 없어 자를 때만 적고, 뺀 축과 이유는 대장에 남긴다",
 

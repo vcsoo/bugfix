@@ -9,6 +9,8 @@
      node audit-check.mjs --artifacts    산출물만
      node audit-check.mjs --strict       대장의 «썩음·안 훑음»·만료된 정책도 실패로 친다
      node audit-check.mjs --catalog      이 스킬의 축·시선 카탈로그 지문만 찍는다 (대장의 «카탈로그» 줄에 적는 값)
+     node audit-check.mjs --yield        시선 × 축 적중률·기각 비율 (발견 대장 + 검수 대장)
+     node audit-check.mjs --mode         지금 간편 / 정밀 중 무엇을 추천하는지와 이유
      node audit-check.mjs --config <경로> --root <경로>
 
    종료코드:  0 통과 · 1 설정·실행 문제 · 2 어긋남(산출물 불일치, --strict 면 대장도)
@@ -46,6 +48,8 @@ function catalogPrint() {
   return h.digest('hex').slice(0, 10);
 }
 if (has('--catalog')) { console.log(catalogPrint()); process.exit(0); }
+const ONLY_YIELD = has('--yield');
+const ONLY_MODE = has('--mode');
 
 /* ── 설정 찾기 ── */
 const CONFIG_NAMES = ['audit.json', '.audit.json', 'docs/audit/audit.json', '.claude/audit.json'];
@@ -180,7 +184,7 @@ function parseLedger(txt) {
     const c = t.split('|').slice(1, -1).map((x) => x.trim());
     if (c.length < 5) continue;
     if (/^-+$/.test(c[0].replace(/[: ]/g, '')) || /^구역$/.test(c[0])) continue;
-    rows.push({ area: c[0], axis: c[1], depth: (c[2] || '').toUpperCase(), date: c[3], commit: c[4], note: c[5] || '', view: c[6] || '개발자' });
+    rows.push({ area: c[0], axis: c[1], depth: (c[2] || '').toUpperCase(), date: c[3], commit: c[4], note: c[5] || '', view: c[6] || '개발자', mode: c[7] || '정밀' });
   }
   return rows;
 }
@@ -257,12 +261,7 @@ function checkFindings() {
   const fp = path.join(ROOT, FINDINGS);
   console.log('\n[발견 대장] 결정·만료 — ' + FINDINGS);
   if (!fs.existsSync(fp)) { hm('발견 대장이 없습니다. 스킬의 templates/FINDINGS.md 를 ' + FINDINGS + ' 로 복사해 쓰세요'); return; }
-  const rows = [];
-  for (const line of fs.readFileSync(fp, 'utf8').split('\n')) {
-    const c = line.trim().startsWith('|') ? line.trim().split('|').slice(1, -1).map((x) => x.trim()) : [];
-    if (c.length < 5 || !/^F-\d+/.test(c[0])) continue;
-    rows.push({ id: c[0], sev: c[1].toUpperCase(), ev: c[2].toUpperCase(), state: c[3], exp: c[4] });
-  }
+  const rows = parseFindings(fs.readFileSync(fp, 'utf8'));
   if (!rows.length) { hm('발견 대장에 줄이 없습니다'); return; }
   const ids = rows.map((r) => r.id); const dup = ids.filter((x, i) => ids.indexOf(x) !== i);
   dup.length ? no('발견 번호가 겹칩니다: ' + [...new Set(dup)].join(', ')) : ok('발견 번호 ' + rows.length + '개가 겹치지 않는다');
@@ -272,12 +271,108 @@ function checkFindings() {
     if ((r.state === '정책' || r.state === '보류') && !/^\d{4}-\d{2}-\d{2}$/.test(r.exp)) hm(r.id + ' — «' + r.state + '» 인데 만료일이 없습니다');
     if ((r.state === '정책' || r.state === '보류') && /^\d{4}-\d{2}-\d{2}$/.test(r.exp) && r.exp < TODAY) (STRICT ? no : hm)(r.id + ' — «' + r.state + '» 만료(' + r.exp + ') — 다시 볼 차례입니다');
   }
+  /* 기각된 지문과 같은 지문이 다시 열려 있으면 — 틀린 발견이 또 올라온 것 */
+  const rejected = new Set(rows.filter((r) => r.state === '기각' && r.print).map((r) => normPrint(r.print)));
+  for (const r of rows) if (r.state !== '기각' && r.print && rejected.has(normPrint(r.print))) hm(r.id + ' — 기각된 발견과 지문이 같습니다 (새로 올리지 말고 기각에 붙이세요)');
+  checkCitations(rows);
   const open = rows.filter((r) => r.state === '열림' || r.state === '다시 열림');
   const e1 = rows.filter((r) => r.ev === 'E1' && r.state !== '고침');
-  console.log('  열림 ' + open.length + ' · 확인할 것(E1) ' + e1.length);
+  console.log('  열림 ' + open.length + ' · 확인할 것(E1) ' + e1.length + ' · 기각 ' + rows.filter((r) => r.state === '기각').length);
+}
+
+function parseFindings(txt) {
+  const rows = [];
+  for (const line of txt.split('\n')) {
+    const c = line.trim().startsWith('|') ? line.trim().split('|').slice(1, -1).map((x) => x.trim()) : [];
+    if (c.length < 5 || !/^F-\d+/.test(c[0])) continue;
+    rows.push({ id: c[0], sev: c[1].toUpperCase(), ev: c[2].toUpperCase(), state: c[3], exp: c[4], view: c[5] || '개발자', axis: c[6] || '', area: c[7] || '', title: c[8] || '', print: c[9] || '' });
+  }
+  return rows;
+}
+const normPrint = (p) => p.replace(/\s+/g, ' ').trim().toLowerCase();
+
+/* 인용 실재 확인 — AI 는 없는 파일·함수 이름을 지어낸다. 발견 대장의 지문(축 · 구역 · 파일 · 함수 · 요약)과
+   검수 기록(docs/audit/AUDIT-*.md)의 «파일:줄» 이 실제로 있는지 본다. 없으면 증거를 E1 로 내리라고 알린다 */
+function checkCitations(rows) {
+  let checked = 0, badN = 0;
+  const lineCount = (f) => fs.readFileSync(f, 'utf8').split('\n').length;
+  for (const r of rows) {
+    if (r.state === '기각' || r.state === '고침' || !r.print) continue;
+    const parts = r.print.split('·').map((x) => x.trim());
+    const file = parts.find((x) => /[\w-]\.[a-z0-9]{1,6}$/i.test(x) && /[/\\]/.test(x));
+    if (!file) continue;
+    checked++;
+    const fpath = path.join(ROOT, file);
+    if (!fs.existsSync(fpath)) { badN++; hm(r.id + ' — 지문의 파일이 없습니다: ' + file + ' (증거를 E1 로)'); continue; }
+    const fn = parts[parts.indexOf(file) + 1];
+    if (fn && /^[A-Za-z_$][\w$]*$/.test(fn) && !fs.readFileSync(fpath, 'utf8').includes(fn)) { badN++; hm(r.id + ' — 지문의 함수 «' + fn + '» 가 ' + file + ' 에 없습니다 (증거를 E1 로)'); }
+  }
+  const adir = path.join(ROOT, path.dirname(FINDINGS));
+  const audits = fs.existsSync(adir) ? fs.readdirSync(adir).filter((f) => /^AUDIT-.*\.md$/.test(f)) : [];
+  for (const a of audits) {
+    const txt = fs.readFileSync(path.join(adir, a), 'utf8');
+    for (const m of txt.matchAll(/(?<![\w:/.])((?:[\w.-]+\/)*[\w.-]+\.[a-z0-9]{1,6}):(\d+)(?:-(\d+))?/gi)) {
+      const f = path.join(ROOT, m[1]); checked++;
+      if (!fs.existsSync(f)) { badN++; hm(a + ' — 인용한 파일이 없습니다: ' + m[0]); continue; }
+      const n = lineCount(f); const hi = Number(m[3] || m[2]);
+      if (hi > n) { badN++; hm(a + ' — 인용한 줄이 파일보다 깁니다: ' + m[0] + ' (파일 ' + n + '줄)'); }
+    }
+  }
+  if (checked) badN ? null : ok('인용 ' + checked + '곳이 실제 파일·줄·함수로 있습니다');
+}
+
+/* ── 4. 적중률 — 시선 × 축마다 받아들여진 발견 / 전체, 기각 비율 ── */
+function yieldReport() {
+  const fp = path.join(ROOT, FINDINGS);
+  const lp = path.join(ROOT, LEDGER);
+  const fr = fs.existsSync(fp) ? parseFindings(fs.readFileSync(fp, 'utf8')) : [];
+  const lr = fs.existsSync(lp) ? parseLedger(fs.readFileSync(lp, 'utf8')) : [];
+  console.log('[적중률] 시선 × 축 — 받아들여짐 = 고침·정책·보류·사람이 실행');
+  const key = (v, a) => v + ' × 축' + a;
+  const st = new Map();
+  const get = (k) => st.get(k) || (st.set(k, { n: 0, acc: 0, rej: 0, looks: 0 }), st.get(k));
+  for (const r of fr) { const x = get(key(r.view, r.axis)); x.n++; if (['고침', '정책', '보류', '사람이 실행'].includes(r.state)) x.acc++; if (r.state === '기각') x.rej++; }
+  for (const r of lr) if (['L2', 'L3'].includes(r.depth)) get(key(r.view, r.axis)).looks++;
+  const list = [...st.entries()].sort((a, b) => b[1].acc - a[1].acc || b[1].n - a[1].n);
+  if (!list.length) { hm('발견·대장이 비어 적중률을 셀 수 없습니다'); return; }
+  for (const [k, x] of list) {
+    const rate = x.n ? Math.round((x.acc / x.n) * 100) + '%' : '-';
+    let flag = '';
+    if (x.n >= 3 && x.rej / x.n >= 0.5) flag = '  ← 기각이 많음: 이 칸의 질문을 고칠 것';
+    else if (x.looks >= 3 && x.n === 0) flag = '  ← ' + x.looks + '번 봤는데 0건: 너무 얕게 본 건 아닌지';
+    console.log('  ' + k.padEnd(14) + ' 발견 ' + String(x.n).padStart(3) + ' · 받아들여짐 ' + rate.padStart(4) + ' · 기각 ' + x.rej + ' · 본 횟수 ' + x.looks + flag);
+  }
+}
+
+/* ── 5. 방식 추천 — 간편 / 정밀 (references/modes.md) ── */
+function modeAdvice() {
+  const lp = path.join(ROOT, LEDGER);
+  const why = [];
+  const rows = fs.existsSync(lp) ? parseLedger(fs.readFileSync(lp, 'utf8')) : [];
+  if (!rows.length) why.push('첫 검수입니다 (대장이 비었다)');
+  else {
+    const txt = fs.readFileSync(lp, 'utf8');
+    const cat = (/\*\*카탈로그\*\*\s*:\s*`?([0-9a-f]{6,})`?/.exec(txt) || [])[1];
+    if (cat && !/^0+$/.test(cat) && cat !== catalogPrint()) why.push('스킬 카탈로그가 바뀌었습니다');
+    const full = rows.filter((r) => r.mode !== '간편' && ['L2', 'L3', 'N/A', 'NA'].includes(r.depth)).map((r) => r.date).sort().pop();
+    const days = full ? Math.floor((Date.parse(TODAY) - Date.parse(full)) / 86400000) : Infinity;
+    if (days > FULL_DAYS) why.push(full ? '마지막 정밀 검수 뒤 ' + days + '일 지났습니다 (기준 ' + FULL_DAYS + '일)' : '정밀 검수 기록이 없습니다');
+    const last = rows.map((r) => r.commit).filter((c) => c && isCommit(c)).pop();
+    if (last && hasGit()) {
+      const auditDir = path.dirname(LEDGER) + '/';  /* 검수 기록 자체의 변경은 세지 않는다 */
+      const changed = git('diff --name-only ' + JSON.stringify(last) + '..HEAD').split('\n').filter((f) => f && !f.startsWith(auditDir) && f !== path.relative(ROOT, CFG_PATH));
+      const all = git('ls-files').split('\n').filter(Boolean).length || 1;
+      if (changed.length / all >= 0.3) why.push('지난 검수 뒤 파일의 ' + Math.round((changed.length / all) * 100) + '%가 바뀌었습니다');
+      if (SHARED.length && changedSince(last, SHARED)) why.push('공용 파일(DB 정의·권한 등)이 바뀌었습니다');
+    }
+  }
+  console.log('[방식 추천] ' + (why.length ? '정밀' : '간편'));
+  (why.length ? why : ['정밀이 필요한 조건이 없습니다 — 바뀐 곳·핵심 축만 보면 됩니다']).forEach((w) => console.log('  - ' + w));
 }
 
 /* ── 실행 ── */
+if (ONLY_YIELD) { yieldReport(); process.exit(0); }
+if (ONLY_MODE) { modeAdvice(); process.exit(0); }
 console.log('축 검수 검사기 — ' + path.relative(process.cwd(), CFG_PATH) + '\n');
 if (!ONLY_LEDGER) checkArtifacts();
 if (!ONLY_ART) { checkLedger(); if (!ONLY_LEDGER) checkFindings(); }

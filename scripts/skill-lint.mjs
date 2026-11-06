@@ -22,7 +22,7 @@ const no = (m) => { bad++; console.log('  ✗ ' + m); };
 
 console.log('[1] 있어야 할 파일');
 const MUST = ['SKILL.md', 'README.md', 'CONTRIBUTING.md',
-  'references/axes.md', 'references/perspectives.md', 'references/severity.md', 'references/generators.md',
+  'references/axes.md', 'references/perspectives.md', 'references/modes.md', 'references/severity.md', 'references/generators.md',
   'templates/AUDIT.md', 'templates/LEDGER.md', 'templates/FINDINGS.md', 'templates/audit.json',
   'templates/axis-template.md', 'templates/case-template.md',
   'scripts/audit-check.mjs', 'cases/README.md'];
